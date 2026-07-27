@@ -6,6 +6,23 @@ from key_schedule import key_expansion
 from transformations import add_round_key, mix_columns, shift_rows, sub_bytes
 from trace import CipherTrace, RoundRecord, StepRecord
 
+BLOCK_SIZE = 16
+
+
+def pad_pkcs7(data: bytes, block_size: int = BLOCK_SIZE) -> bytes:
+    """Pad data with PKCS#7 up to exactly one block.
+
+    Rejects data already longer than block_size - this only fills a single
+    short block out to full size, it does not split longer input into
+    multiple blocks.
+    """
+    if len(data) > block_size:
+        raise ValueError(f"Input must be at most {block_size} bytes")
+    pad_len = block_size - len(data)
+    if pad_len == 0:
+        return data
+    return data + bytes([pad_len]) * pad_len
+
 
 def _apply(name, func, state, steps, *args):
     """Run one named step, recording its before/after state into steps."""
@@ -45,3 +62,8 @@ def encrypt_block(plaintext: bytes, key: bytes) -> CipherTrace:
 
     result.ciphertext = state
     return result
+
+
+def encrypt(plaintext: bytes, key: bytes) -> CipherTrace:
+    """Pad plaintext to one block (PKCS#7) if needed, then encrypt it."""
+    return encrypt_block(pad_pkcs7(plaintext), key)
