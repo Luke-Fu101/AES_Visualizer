@@ -4,10 +4,11 @@ Reads a trace produced by cipher.py and renders it; contains no AES logic itself
 """
 
 import os
+import tkinter as tk
 
 import customtkinter as ctk
 
-from cipher import encrypt_block
+from cipher import BLOCK_SIZE, encrypt
 from constants import KEY_SCHEDULE_PARAMS
 from trace import CipherTrace
 
@@ -45,6 +46,9 @@ class AESVisualizerApp(ctk.CTk):
         self._build_key_generator()
         self._build_plaintext_input()
         self._build_encrypt_action()
+        self._build_state_grid()
+        self._build_navigation()
+        self._refresh_display()
 
     def _build_title(self) -> None:
         """App title"""
@@ -65,9 +69,12 @@ class AESVisualizerApp(ctk.CTk):
         )
         frame.pack(fill="x", padx=10, pady=10)
 
+        self.key_var = tk.StringVar()
         self.key_entry = ctk.CTkEntry(
             frame,
-            placeholder_text="Key (hex)",
+            placeholder_text="Generate a key ->",
+            textvariable=self.key_var,
+            state="readonly",
             fg_color=COLOR_BG,
             text_color=COLOR_GREEN,
             border_color=COLOR_BORDER,
@@ -89,11 +96,12 @@ class AESVisualizerApp(ctk.CTk):
     def _generate_random_key(self) -> None:
         """Generate a cryptographically random key and show it in the key entry."""
         self.key = os.urandom(DEFAULT_KEY_SIZE_BYTES)
-        self.key_entry.delete(0, "end")
-        self.key_entry.insert(0, self.key.hex())
+        self.key_var.set(self.key.hex())
 
     def _build_plaintext_input(self) -> None:
-        """Box for entering the 16-byte plaintext block, in hex."""
+        """Box for entering the plaintext message as literal text (UTF-8 encoded
+        to bytes). Shorter than one block gets PKCS#7-padded up to 16 bytes by
+        _run_encryption."""
         frame = ctk.CTkFrame(
             self, fg_color=COLOR_PANEL, border_color=COLOR_BORDER, border_width=1
         )
@@ -101,7 +109,7 @@ class AESVisualizerApp(ctk.CTk):
 
         self.plaintext_entry = ctk.CTkEntry(
             frame,
-            placeholder_text="Plaintext (hex, 16 bytes)",
+            placeholder_text="Plaintext message (up to 16 bytes)",
             fg_color=COLOR_BG,
             text_color=COLOR_GREEN,
             border_color=COLOR_BORDER,
@@ -129,7 +137,7 @@ class AESVisualizerApp(ctk.CTk):
         self.status_label.pack(side="left")
 
     def _run_encryption(self) -> None:
-        """Read key/plaintext from the entries, run encrypt_block, store the trace."""
+        """Read key/plaintext from the entries, pad the plaintext if needed, run encrypt, store the trace."""
         try:
             key = bytes.fromhex(self.key_entry.get().strip())
             plaintext = bytes.fromhex(self.plaintext_entry.get().strip())
@@ -137,8 +145,8 @@ class AESVisualizerApp(ctk.CTk):
             self.status_label.configure(text="Invalid hex in key or plaintext.")
             return
 
-        if len(plaintext) != 16:
-            self.status_label.configure(text="Plaintext must be 16 bytes (32 hex characters).")
+        if len(plaintext) > BLOCK_SIZE:
+            self.status_label.configure(text=f"Plaintext must be at most {BLOCK_SIZE} bytes.")
             return
 
         if len(key) * 8 not in KEY_SCHEDULE_PARAMS:
@@ -147,7 +155,114 @@ class AESVisualizerApp(ctk.CTk):
 
         self.key = key
         self.plaintext = plaintext
-        self.trace = encrypt_block(plaintext, key)
+        self.trace = encrypt(plaintext, key)
         self.current_round_index = 0
         self.current_step_index = 0
         self.status_label.configure(text=f"Ciphertext: {self.trace.ciphertext.hex()}")
+        self._refresh_display()
+
+    def _build_state_grid(self) -> None:
+        """4x4 grid showing the state bytes (in hex) for the current step."""
+        frame = ctk.CTkFrame(
+            self, fg_color=COLOR_PANEL, border_color=COLOR_BORDER, border_width=1
+        )
+        frame.pack(padx=10, pady=(0, 10))
+
+        self.grid_labels = {}
+        for r in range(4):
+            for c in range(4):
+                label = ctk.CTkLabel(
+                    frame,
+                    text="--",
+                    width=50,
+                    height=50,
+                    fg_color=COLOR_BG,
+                    text_color=COLOR_GREEN,
+                    font=ctk.CTkFont(family="Courier", size=16),
+                )
+                label.grid(row=r, column=c, padx=4, pady=4)
+                self.grid_labels[(r, c)] = label
+
+    def _build_navigation(self) -> None:
+        """Prev/Next controls plus a label naming the current round and step."""
+        frame = ctk.CTkFrame(self, fg_color="transparent")
+        frame.pack(fill="x", padx=10, pady=(0, 10))
+
+        prev_button = ctk.CTkButton(
+            frame,
+            text="◀ Prev",
+            command=self._go_to_previous_step,
+            fg_color=COLOR_PANEL,
+            hover_color=COLOR_GREEN_DIM,
+            text_color=COLOR_GREEN,
+            border_color=COLOR_GREEN,
+            border_width=1,
+        )
+        prev_button.pack(side="left")
+
+        self.nav_label = ctk.CTkLabel(frame, text="No trace yet", text_color=COLOR_GREEN)
+        self.nav_label.pack(side="left", expand=True)
+
+        next_button = ctk.CTkButton(
+            frame,
+            text="Next ▶",
+            command=self._go_to_next_step,
+            fg_color=COLOR_PANEL,
+            hover_color=COLOR_GREEN_DIM,
+            text_color=COLOR_GREEN,
+            border_color=COLOR_GREEN,
+            border_width=1,
+        )
+        next_button.pack(side="right")
+
+    def _go_to_next_step(self) -> None:
+        """Advance to the next step, moving into the next round if needed."""
+        if self.trace is None:
+            return
+
+        current_round = self.trace.rounds[self.current_round_index]
+        if self.current_step_index + 1 < len(current_round.steps):
+            self.current_step_index += 1
+        elif self.current_round_index + 1 < len(self.trace.rounds):
+            self.current_round_index += 1
+            self.current_step_index = 0
+
+        self._refresh_display()
+
+    def _go_to_previous_step(self) -> None:
+        """Go back to the previous step, moving into the previous round if needed."""
+        if self.trace is None:
+            return
+
+        if self.current_step_index > 0:
+            self.current_step_index -= 1
+        elif self.current_round_index > 0:
+            self.current_round_index -= 1
+            self.current_step_index = len(self.trace.rounds[self.current_round_index].steps) - 1
+
+        self._refresh_display()
+
+    def _refresh_display(self) -> None:
+        """Redraw the nav label and state grid for the current round/step."""
+        if self.trace is None:
+            self.nav_label.configure(text="No trace yet")
+            for label in self.grid_labels.values():
+                label.configure(text="--")
+            return
+
+        round_record = self.trace.rounds[self.current_round_index]
+        step_record = round_record.steps[self.current_step_index]
+        final_round_number = len(self.trace.rounds) - 1
+
+        self.nav_label.configure(
+            text=(
+                f"Round {round_record.round_number}/{final_round_number}  —  "
+                f"{step_record.name}  "
+                f"(step {self.current_step_index + 1}/{len(round_record.steps)})"
+            )
+        )
+
+        state = step_record.state_after
+        for r in range(4):
+            for c in range(4):
+                self.grid_labels[(r, c)].configure(text=f"{state[c * 4 + r]:02X}")
