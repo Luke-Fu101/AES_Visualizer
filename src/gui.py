@@ -137,13 +137,15 @@ class AESVisualizerApp(ctk.CTk):
         self.status_label.pack(side="left")
 
     def _run_encryption(self) -> None:
-        """Read key/plaintext from the entries, pad the plaintext if needed, run encrypt, store the trace."""
+        """Read the key (hex) and plaintext (literal text) from the entries,
+        pad the plaintext if needed, run encrypt, and store the trace."""
         try:
             key = bytes.fromhex(self.key_entry.get().strip())
-            plaintext = bytes.fromhex(self.plaintext_entry.get().strip())
         except ValueError:
-            self.status_label.configure(text="Invalid hex in key or plaintext.")
+            self.status_label.configure(text="Invalid hex in key.")
             return
+
+        plaintext = self.plaintext_entry.get().encode("utf-8")
 
         if len(plaintext) > BLOCK_SIZE:
             self.status_label.configure(text=f"Plaintext must be at most {BLOCK_SIZE} bytes.")
