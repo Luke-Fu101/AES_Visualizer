@@ -10,17 +10,13 @@ BLOCK_SIZE = 16
 
 
 def pad_pkcs7(data: bytes, block_size: int = BLOCK_SIZE) -> bytes:
-    """Pad data with PKCS#7 up to exactly one block.
+    """Pad data with PKCS#7 up to the next multiple of block_size.
 
-    Rejects data already longer than block_size - this only fills a single
-    short block out to full size, it does not split longer input into
-    multiple blocks.
+    If data is already a multiple of block_size (including empty), a full
+    block of padding is added, so the padding is always unambiguous to
+    strip back off later.
     """
-    if len(data) > block_size:
-        raise ValueError(f"Input must be at most {block_size} bytes")
-    pad_len = block_size - len(data)
-    if pad_len == 0:
-        return data
+    pad_len = block_size - (len(data) % block_size)
     return data + bytes([pad_len]) * pad_len
 
 
@@ -64,6 +60,10 @@ def encrypt_block(plaintext: bytes, key: bytes) -> CipherTrace:
     return result
 
 
-def encrypt(plaintext: bytes, key: bytes) -> CipherTrace:
-    """Pad plaintext to one block (PKCS#7) if needed, then encrypt it."""
-    return encrypt_block(pad_pkcs7(plaintext), key)
+def encrypt(plaintext: bytes, key: bytes) -> list[CipherTrace]:
+    """Pad plaintext (PKCS#7) to a multiple of the block size, split it into
+    16-byte blocks, and encrypt each block independently under the same key
+    (ECB mode). Returns one CipherTrace per block."""
+    padded = pad_pkcs7(plaintext)
+    blocks = [padded[i : i + BLOCK_SIZE] for i in range(0, len(padded), BLOCK_SIZE)]
+    return [encrypt_block(block, key) for block in blocks]
