@@ -78,6 +78,15 @@ def encrypt(plaintext: bytes, key: bytes, iv: bytes | None = None) -> tuple[byte
     for block in blocks:
         chained_block = add_round_key(block, previous_ciphertext)
         trace = encrypt_block(chained_block, key)
+
+        # Make the CBC chaining visible in the trace: round 0 starts from the
+        # raw plaintext block, XORs it with the IV/previous ciphertext block,
+        # and only then feeds the result into AddRoundKey.
+        cbc_step = StepRecord("CBC XOR (chain with IV/previous ciphertext)", block, chained_block)
+        trace.rounds[0].steps.insert(0, cbc_step)
+        trace.rounds[0].state_before = block
+        trace.plaintext = block
+
         traces.append(trace)
         previous_ciphertext = trace.ciphertext
 
