@@ -2,6 +2,8 @@
 
 """
 
+import os
+
 from key_schedule import key_expansion
 from transformations import add_round_key, mix_columns, shift_rows, sub_bytes
 from trace import CipherTrace, RoundRecord, StepRecord
@@ -60,10 +62,23 @@ def encrypt_block(plaintext: bytes, key: bytes) -> CipherTrace:
     return result
 
 
-def encrypt(plaintext: bytes, key: bytes) -> list[CipherTrace]:
-    """Pad plaintext (PKCS#7) to a multiple of the block size, split it into
-    16-byte blocks, and encrypt each block independently under the same key
-    (ECB mode). Returns one CipherTrace per block."""
+def encrypt(plaintext: bytes, key: bytes, iv: bytes | None = None) -> tuple[bytes, list[CipherTrace]]:
+    """Pad plaintext (PKCS#7), split it into 16-byte blocks, and encrypt them
+    in CBC mode: each block is XORed with the previous ciphertext block (the
+    first with the IV) before being run through encrypt_block. Generates a
+    random IV if none is given. Returns (iv, one CipherTrace per block)."""
+    if iv is None:
+        iv = os.urandom(BLOCK_SIZE)
+
     padded = pad_pkcs7(plaintext)
     blocks = [padded[i : i + BLOCK_SIZE] for i in range(0, len(padded), BLOCK_SIZE)]
-    return [encrypt_block(block, key) for block in blocks]
+
+    traces = []
+    previous_ciphertext = iv
+    for block in blocks:
+        chained_block = add_round_key(block, previous_ciphertext)
+        trace = encrypt_block(chained_block, key)
+        traces.append(trace)
+        previous_ciphertext = trace.ciphertext
+
+    return iv, traces
