@@ -1,1 +1,2 @@
 # Python package dependencies for the AES visualizer.
+customtkinter>=5.2
