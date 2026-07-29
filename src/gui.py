@@ -8,7 +8,7 @@ import tkinter as tk
 
 import customtkinter as ctk
 
-from cipher import encrypt
+from cipher import decrypt, encrypt
 from constants import KEY_SCHEDULE_PARAMS
 from trace import CipherTrace
 
@@ -119,7 +119,7 @@ class AESVisualizerApp(ctk.CTk):
         self.plaintext_entry.pack(fill="x", expand=True, padx=10, pady=10)
 
     def _build_encrypt_action(self) -> None:
-        """Encrypt button plus a status/output label showing the result or any error."""
+        """Encrypt/Decrypt buttons plus a status/output label showing the result or any error."""
         frame = ctk.CTkFrame(self, fg_color="transparent")
         frame.pack(fill="x", padx=10, pady=(0, 10))
 
@@ -134,6 +134,18 @@ class AESVisualizerApp(ctk.CTk):
             border_width=1,
         )
         encrypt_button.pack(side="left", padx=(0, 10))
+
+        decrypt_button = ctk.CTkButton(
+            frame,
+            text="Decrypt",
+            command=self._run_decryption,
+            fg_color=COLOR_PANEL,
+            hover_color=COLOR_GREEN_DIM,
+            text_color=COLOR_GREEN,
+            border_color=COLOR_GREEN,
+            border_width=1,
+        )
+        decrypt_button.pack(side="left", padx=(0, 10))
 
         self.status_label = ctk.CTkLabel(frame, text="", text_color=COLOR_GREEN)
         self.status_label.pack(side="left")
@@ -163,6 +175,40 @@ class AESVisualizerApp(ctk.CTk):
 
         full_ciphertext = b"".join(block.ciphertext for block in self.blocks).hex()
         self.status_label.configure(text=f"IV: {self.iv.hex()}   Ciphertext: {full_ciphertext}")
+        self._refresh_display()
+
+    def _run_decryption(self) -> None:
+        """Decrypt the currently loaded ciphertext (from the last encryption)
+        back into plaintext under the key entry's key, replacing the displayed
+        trace with the decryption rounds/steps."""
+        if not self.blocks or not self.iv:
+            self.status_label.configure(text="Encrypt something first, then Decrypt.")
+            return
+
+        try:
+            key = bytes.fromhex(self.key_entry.get().strip())
+        except ValueError:
+            self.status_label.configure(text="Invalid hex in key.")
+            return
+
+        ciphertext = b"".join(block.ciphertext for block in self.blocks)
+
+        try:
+            plaintext, self.blocks = decrypt(ciphertext, key, self.iv)
+        except ValueError as error:
+            self.status_label.configure(text=f"Decryption failed: {error}")
+            return
+
+        self.current_block_index = 0
+        self.current_round_index = 0
+        self.current_step_index = 0
+
+        try:
+            recovered_text = plaintext.decode("utf-8")
+            self.status_label.configure(text=f"Recovered plaintext: {recovered_text!r}")
+        except UnicodeDecodeError:
+            self.status_label.configure(text=f"Recovered plaintext (hex): {plaintext.hex()}")
+
         self._refresh_display()
 
     def _build_state_grid(self) -> None:
