@@ -38,6 +38,7 @@ class AESVisualizerApp(ctk.CTk):
         # Algorithm state
         self.key: bytes = b""
         self.plaintext: bytes = b""
+        self.iv: bytes = b""
         self.blocks: list[CipherTrace] = []
         self.current_block_index: int = 0
         self.current_round_index: int = 0
@@ -155,13 +156,13 @@ class AESVisualizerApp(ctk.CTk):
 
         self.key = key
         self.plaintext = plaintext
-        self.blocks = encrypt(plaintext, key)
+        self.iv, self.blocks = encrypt(plaintext, key)
         self.current_block_index = 0
         self.current_round_index = 0
         self.current_step_index = 0
 
         full_ciphertext = b"".join(block.ciphertext for block in self.blocks).hex()
-        self.status_label.configure(text=f"Ciphertext: {full_ciphertext}")
+        self.status_label.configure(text=f"IV: {self.iv.hex()}   Ciphertext: {full_ciphertext}")
         self._refresh_display()
 
     def _build_state_grid(self) -> None:
