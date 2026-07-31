@@ -14,7 +14,8 @@ from trace import CipherTrace
 
 ctk.set_appearance_mode("dark")
 
-DEFAULT_KEY_SIZE_BYTES = 16  # AES-128
+KEY_SIZE_OPTIONS = {"128-bit": 16, "192-bit": 24, "256-bit": 32}
+DEFAULT_KEY_SIZE_LABEL = "128-bit"
 
 # Shared black/gray/green palette - every widget going forward should draw
 # its colors from here rather than customtkinter's built-in theme colors.
@@ -39,6 +40,7 @@ class AESVisualizerApp(ctk.CTk):
         self.key: bytes = b""
         self.plaintext: bytes = b""
         self.iv: bytes = b""
+        self.selected_key_size_bytes: int = KEY_SIZE_OPTIONS[DEFAULT_KEY_SIZE_LABEL]
         self.blocks: list[CipherTrace] = []
         self.current_block_index: int = 0
         self.current_round_index: int = 0
@@ -65,12 +67,26 @@ class AESVisualizerApp(ctk.CTk):
         title.pack(fill="x", padx=10, pady=(10, 0))
 
     def _build_key_generator(self) -> None:
-        """Top-of-window box: shows the current key in hex, with a button to
-        generate a new random one."""
+        """Top-of-window box: a key-size selector, the current key in hex, and
+        a button to generate a new random one at the selected size."""
         frame = ctk.CTkFrame(
             self, fg_color=COLOR_PANEL, border_color=COLOR_BORDER, border_width=1
         )
         frame.pack(fill="x", padx=10, pady=10)
+
+        self.key_size_selector = ctk.CTkSegmentedButton(
+            frame,
+            values=list(KEY_SIZE_OPTIONS.keys()),
+            command=self._on_key_size_selected,
+            fg_color=COLOR_BG,
+            selected_color=COLOR_GREEN_DIM,
+            selected_hover_color=COLOR_GREEN_DIM,
+            unselected_color=COLOR_PANEL,
+            unselected_hover_color=COLOR_PANEL,
+            text_color=COLOR_GREEN,
+        )
+        self.key_size_selector.set(DEFAULT_KEY_SIZE_LABEL)
+        self.key_size_selector.pack(side="left", padx=10, pady=10)
 
         self.key_var = tk.StringVar()
         self.key_entry = ctk.CTkEntry(
@@ -82,7 +98,7 @@ class AESVisualizerApp(ctk.CTk):
             text_color=COLOR_GREEN,
             border_color=COLOR_BORDER,
         )
-        self.key_entry.pack(side="left", fill="x", expand=True, padx=10, pady=10)
+        self.key_entry.pack(side="left", fill="x", expand=True, padx=(0, 10), pady=10)
 
         generate_button = ctk.CTkButton(
             frame,
@@ -96,9 +112,14 @@ class AESVisualizerApp(ctk.CTk):
         )
         generate_button.pack(side="left", padx=(0, 10), pady=10)
 
+    def _on_key_size_selected(self, label: str) -> None:
+        """Remember which key size the next generated key should use."""
+        self.selected_key_size_bytes = KEY_SIZE_OPTIONS[label]
+
     def _generate_random_key(self) -> None:
-        """Generate a cryptographically random key and show it in the key entry."""
-        self.key = os.urandom(DEFAULT_KEY_SIZE_BYTES)
+        """Generate a cryptographically random key at the selected size and
+        show it in the key entry."""
+        self.key = os.urandom(self.selected_key_size_bytes)
         self.key_var.set(self.key.hex())
 
     def _build_plaintext_input(self) -> None:
